@@ -13,19 +13,21 @@
 <link rel="icon" href="icon-512.png">
 <link rel="manifest" href="manifest.webmanifest">
 <style>
-/* 版面：永遠橫向。左邊大簽名紙，右邊一排直立按鍵（像刷卡機側鍵）。手機直拿時整個舞台轉 90°。 */
+/* 版面：永遠橫向。左邊大簽名紙，右邊直排按鍵。上方一列可開啟 Word 檔，簽完自動放進 {{簽名}} 的位置。 */
 :root {
   --bg: #e4e7ea;
-  --panel: #f6f7f8;
   --text: #1b2430;
   --muted: #647080;
   --line: #c5ccd3;
   --paper: #fdfdf9;
+  --chip: #ffffff;
+  --doc: #1f5fbf;
   --key-clear: #f2c230;
   --key-clear-text: #3a2c00;
   --key-ok: #1f9d55;
   --key-ok-text: #ffffff;
   --key-plain: #ffffff;
+  --warn: #b4431f;
   --font-body: "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   /* 瀏海與底部橫條的安全邊距（由 JS 依方向換算） */
@@ -33,17 +35,22 @@
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #14181d; --panel: #1e242b; --text: #e8ecf0; --muted: #94a0ad;
-    --line: #36404b; --paper: #f3f1e8; --key-plain: #2a323b;
+  :root:not([data-theme="light"]) {
+    --bg: #14181d; --text: #e8ecf0; --muted: #94a0ad; --line: #36404b;
+    --paper: #f3f1e8; --chip: #222a32; --key-plain: #2a323b; --doc: #6ea2f0; --warn: #f08a63;
     color-scheme: dark;
   }
+}
+:root[data-theme="dark"] {
+  --bg: #14181d; --text: #e8ecf0; --muted: #94a0ad; --line: #36404b;
+  --paper: #f3f1e8; --chip: #222a32; --key-plain: #2a323b; --doc: #6ea2f0; --warn: #f08a63;
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; overflow: hidden; background: var(--bg); }
 body {
-  color: var(--text); font-family: var(--font-body);
+  background: var(--bg); color: var(--text); font-family: var(--font-body);
   -webkit-user-select: none; user-select: none;
   -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
   overscroll-behavior: none;
@@ -52,22 +59,29 @@ body {
   position: fixed; visibility: hidden; pointer-events: none;
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
-
-/* 舞台：由 JS 設定寬高；直拿時旋轉 */
-#stage {
-  position: fixed; left: 0; top: 0;
-  transform-origin: 0 0;
-  background: var(--bg);
-}
+#stage { position: fixed; left: 0; top: 0; transform-origin: 0 0; background: var(--bg); }
 .app {
   position: absolute; inset: 0;
   display: grid; grid-template-columns: 1fr 112px; gap: 12px;
   padding: var(--pt) var(--pr) var(--pb) var(--pl);
 }
 .left { display: flex; flex-direction: column; gap: 8px; min-width: 0; min-height: 0; }
-header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
-h1 { font-size: 16px; margin: 0; font-weight: 600; letter-spacing: .04em; }
-.stamp { font-family: var(--font-mono); font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+header { display: flex; align-items: center; gap: 10px; min-width: 0; }
+h1 { font-size: 16px; margin: 0; font-weight: 600; letter-spacing: .04em; flex: none; }
+.filebtn {
+  flex: none; display: inline-flex; align-items: center; gap: 6px;
+  font-size: 14px; font-weight: 600; color: var(--doc);
+  border: 1px solid var(--doc); border-radius: 8px; padding: 6px 10px; cursor: pointer;
+  background: var(--chip);
+}
+.filebtn input { display: none; }
+.docinfo {
+  flex: 1; min-width: 0; font-size: 13px; color: var(--muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.docinfo b { color: var(--text); font-weight: 600; }
+.docinfo.err { color: var(--warn); }
+.stamp { flex: none; font-family: var(--font-mono); font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
 
 .pad {
   position: relative; flex: 1; min-height: 0;
@@ -75,20 +89,19 @@ h1 { font-size: 16px; margin: 0; font-weight: 600; letter-spacing: .04em; }
   overflow: hidden; touch-action: none;
 }
 canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
-.guide {
-  position: absolute; left: 5%; right: 5%; bottom: 26%;
-  border-bottom: 1.5px dashed #9aa3ad; pointer-events: none;
-}
-.guide::before {
-  content: "✕"; position: absolute; left: 0; bottom: 6px;
-  font-size: 22px; color: #7a8591; line-height: 1;
-}
+.guide { position: absolute; left: 5%; right: 5%; bottom: 26%; border-bottom: 1.5px dashed #9aa3ad; pointer-events: none; }
+.guide::before { content: "✕"; position: absolute; left: 0; bottom: 6px; font-size: 22px; color: #7a8591; line-height: 1; }
 .hint {
   position: absolute; left: 0; right: 0; bottom: calc(26% - 30px);
-  text-align: center; font-size: 14px; color: #7a8591; letter-spacing: .2em;
+  text-align: center; font-size: 14px; color: #7a8591; letter-spacing: .15em;
   pointer-events: none; transition: opacity .2s;
 }
 .pad.signed .hint { opacity: 0; }
+.target {
+  position: absolute; left: 12px; top: 10px; pointer-events: none;
+  font-size: 13px; font-weight: 600; color: #1f5fbf;
+  background: #e8f0fc; border-radius: 6px; padding: 4px 8px;
+}
 
 .keys { display: flex; flex-direction: column; gap: 10px; }
 .keys button { flex: 1; }
@@ -100,15 +113,15 @@ button {
   cursor: pointer; touch-action: manipulation;
 }
 button:active { transform: translateY(1px); filter: brightness(.94); }
-button:focus-visible { outline: 3px solid #4c8dff; outline-offset: 2px; }
+button:focus-visible, .filebtn:focus-within { outline: 3px solid #4c8dff; outline-offset: 2px; }
 button:disabled { opacity: .45; cursor: default; transform: none; filter: none; }
 .k-clear { background: var(--key-clear); color: var(--key-clear-text); border-color: transparent; }
 .k-ok { background: var(--key-ok); color: var(--key-ok-text); border-color: transparent; }
+.k-doc { background: #1f5fbf; color: #fff; border-color: transparent; }
 
-/* 完成畫面（同樣在舞台內，跟著轉） */
 .done {
   position: absolute; inset: 0; background: var(--bg);
-  display: none; grid-template-columns: 1fr 160px; gap: 12px;
+  display: none; grid-template-columns: 1fr 170px; gap: 12px;
   padding: var(--pt) var(--pr) var(--pb) var(--pl);
 }
 .done.show { display: grid; }
@@ -116,7 +129,7 @@ button:disabled { opacity: .45; cursor: default; transform: none; filter: none; 
 .preview {
   flex: 1; min-height: 0;
   background: var(--paper); border: 1px solid var(--line); border-radius: 10px;
-  display: flex; align-items: center; justify-content: center; padding: 10px;
+  display: flex; align-items: center; justify-content: center; gap: 16px; padding: 10px; flex-wrap: wrap;
 }
 .preview.clear-bg {
   background-color: #fff;
@@ -134,7 +147,8 @@ button:disabled { opacity: .45; cursor: default; transform: none; filter: none; 
 .opt { display: flex; align-items: center; gap: 8px; font-size: 14px; line-height: 1.3; }
 .opt input { width: 22px; height: 22px; flex: none; accent-color: var(--key-ok); }
 .note { font-size: 13px; color: var(--muted); margin: 0; line-height: 1.4; }
-
+.note.err { color: var(--warn); }
+[hidden] { display: none !important; }
 @media (prefers-reduced-motion: reduce) { .hint { transition: none; } button:active { transform: none; } }
 </style>
 </head>
@@ -145,11 +159,14 @@ button:disabled { opacity: .45; cursor: default; transform: none; filter: none; 
     <div class="left">
       <header>
         <h1>簽名板</h1>
+        <label class="filebtn" for="file">開啟 Word<input type="file" id="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"></label>
+        <span class="docinfo" id="docinfo">可選 Word 檔，簽完自動放到 {{簽名}} 位置</span>
         <span class="stamp" id="stamp"></span>
       </header>
       <div class="pad" id="pad">
+        <div class="target" id="target" hidden></div>
         <div class="guide"></div>
-        <div class="hint">請在此簽名</div>
+        <div class="hint" id="hint">請在此簽名</div>
         <canvas id="cv" aria-label="簽名區，用手指或觸控筆簽名"></canvas>
       </div>
     </div>
@@ -162,41 +179,212 @@ button:disabled { opacity: .45; cursor: default; transform: none; filter: none; 
 
   <div class="done" id="done" aria-live="polite">
     <div class="left">
-      <h2>簽名完成</h2>
-      <div class="preview" id="preview"><img id="out" alt="您的簽名"></div>
+      <h2 id="doneTitle">簽名完成</h2>
+      <div class="preview" id="preview"></div>
       <p class="note" id="note">按「儲存圖片」，或長按圖片存到照片。</p>
     </div>
     <div class="side">
-      <label class="opt" for="transparent"><input type="checkbox" id="transparent"> 透明背景</label>
+      <label class="opt" for="transparent" id="optT"><input type="checkbox" id="transparent"> 透明背景</label>
+      <button type="button" id="saveDoc" class="k-doc" hidden>儲存 Word</button>
       <button type="button" id="save" class="k-ok">儲存圖片</button>
       <button type="button" id="back">重新簽名</button>
     </div>
   </div>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+// 把 docx 裡的 {{標記}} 換成簽名圖片或文字。瀏覽器與 Node 共用。
+// deps: { JSZip, DOMParser, XMLSerializer }
+var DocxFill = (function () {
+  var W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+  var NS_DECL =
+    ' xmlns:w="' + W + '"' +
+    ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"' +
+    ' xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"' +
+    ' xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"' +
+    ' xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"';
+  var MARK = /\{\{\s*([^{}]+?)\s*\}\}/g;
+
+  function isSign(name) { return /簽|sign/i.test(name); }
+  function isDate(name) { return /日期|date/i.test(name); }
+
+  function paragraphs(doc) { return doc.getElementsByTagNameNS(W, 'p'); }
+  function texts(p) {
+    var out = [], all = p.getElementsByTagNameNS(W, 't');
+    for (var i = 0; i < all.length; i++) out.push(all[i]);
+    return out;
+  }
+
+  // 列出文件中的標記（依出現順序、去重）
+  function scan(xml, dp) {
+    var doc = new dp().parseFromString(xml, 'application/xml');
+    var ps = paragraphs(doc), seen = {}, list = [];
+    for (var i = 0; i < ps.length; i++) {
+      var full = texts(ps[i]).map(function (t) { return t.textContent; }).join('');
+      var m; MARK.lastIndex = 0;
+      while ((m = MARK.exec(full))) {
+        if (!seen[m[1]]) { seen[m[1]] = 1; list.push({ name: m[1], kind: isSign(m[1]) ? 'sign' : isDate(m[1]) ? 'date' : 'text' }); }
+      }
+    }
+    return list;
+  }
+
+  function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+
+  function imageRunXml(rId, id, cx, cy, rPrXml) {
+    return '<w:r' + NS_DECL + '>' + (rPrXml || '') +
+      '<w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0">' +
+      '<wp:extent cx="' + cx + '" cy="' + cy + '"/>' +
+      '<wp:effectExtent l="0" t="0" r="0" b="0"/>' +
+      '<wp:docPr id="' + id + '" name="簽名 ' + id + '"/>' +
+      '<wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1"/></wp:cNvGraphicFramePr>' +
+      '<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">' +
+      '<pic:pic><pic:nvPicPr><pic:cNvPr id="' + id + '" name="signature' + id + '.png"/><pic:cNvPicPr/></pic:nvPicPr>' +
+      '<pic:blipFill><a:blip r:embed="' + rId + '"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>' +
+      '<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="' + cx + '" cy="' + cy + '"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>' +
+      '</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>';
+  }
+  function textRunXml(text, rPrXml) {
+    return '<w:r' + NS_DECL + '>' + (rPrXml || '') + '<w:t xml:space="preserve">' + esc(text) + '</w:t></w:r>';
+  }
+
+  /**
+   * values: { 標記名: {type:'image', png:Uint8Array, w:px, h:px} | {type:'text', text:'...'} }
+   * opts: { maxW: cm, maxH: cm }
+   * 回傳新的 docx (Uint8Array)
+   */
+  async function fill(data, values, deps, opts) {
+    opts = opts || {};
+    var maxW = (opts.maxW || 5) * 360000, maxH = (opts.maxH || 1.6) * 360000;
+    var zip = await deps.JSZip.loadAsync(data);
+    var dp = deps.DOMParser, xs = new deps.XMLSerializer();
+    var docXml = await zip.file('word/document.xml').async('string');
+    var relsPath = 'word/_rels/document.xml.rels';
+    var relsXml = zip.file(relsPath) ? await zip.file(relsPath).async('string')
+      : '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>';
+    var ctXml = await zip.file('[Content_Types].xml').async('string');
+
+    var doc = new dp().parseFromString(docXml, 'application/xml');
+    var rels = new dp().parseFromString(relsXml, 'application/xml');
+    var RELNS = 'http://schemas.openxmlformats.org/package/2006/relationships';
+
+    // 下一個可用的 rId 與 docPr id
+    var maxR = 0, relEls = rels.getElementsByTagNameNS(RELNS, 'Relationship');
+    for (var i = 0; i < relEls.length; i++) {
+      var n = parseInt((relEls[i].getAttribute('Id') || '').replace(/\D/g, ''), 10);
+      if (n > maxR) maxR = n;
+    }
+    var nextId = 9000;
+    var imgRid = {};   // 同一個標記只放一次圖檔
+    var count = 0;
+
+    function rIdFor(name, v) {
+      if (imgRid[name]) return imgRid[name];
+      maxR += 1;
+      var rId = 'rIdSig' + maxR;
+      var file = 'media/signature_' + maxR + '.png';
+      zip.file('word/' + file, v.png);
+      var rel = rels.createElementNS(RELNS, 'Relationship');
+      rel.setAttribute('Id', rId);
+      rel.setAttribute('Type', 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/image');
+      rel.setAttribute('Target', file);
+      rels.documentElement.appendChild(rel);
+      imgRid[name] = rId;
+      return rId;
+    }
+
+    var ps = paragraphs(doc);
+    for (var pi = 0; pi < ps.length; pi++) {
+      var p = ps[pi];
+      // 處理一個標記後重新讀取，直到這段沒有可替換的標記
+      for (var guard = 0; guard < 50; guard++) {
+        var ts = texts(p);
+        var full = '', starts = [];
+        ts.forEach(function (t) { starts.push(full.length); full += t.textContent; });
+        MARK.lastIndex = 0;
+        var m, hit = null;
+        while ((m = MARK.exec(full))) { if (values[m[1]]) { hit = m; break; } }
+        if (!hit) break;
+        var s = hit.index, e = hit.index + hit[0].length, v = values[hit[1]];
+
+        var first = -1;
+        for (var k = 0; k < ts.length; k++) {
+          var a = starts[k], b = a + ts[k].textContent.length;
+          if (b <= s || a >= e) continue;
+          var txt = ts[k].textContent;
+          var cutA = Math.max(s - a, 0), cutB = Math.min(e - a, txt.length);
+          if (first < 0) {
+            first = k;
+            // 開頭那段：留前綴；把後綴拆到新的 run 之後
+            var prefix = txt.slice(0, cutA), suffix = (e - a < txt.length) ? txt.slice(cutB) : '';
+            ts[k].textContent = prefix;
+            ts[k].setAttributeNS('http://www.w3.org/XML/1998/namespace', 'xml:space', 'preserve');
+            var run = ts[k].parentNode;
+            var rPr = run.getElementsByTagNameNS(W, 'rPr')[0];
+            var rPrXml = rPr ? xs.serializeToString(rPr) : '';
+            var xml = v.type === 'image'
+              ? (function () {
+                  var sc = Math.min(maxW / v.w, maxH / v.h);
+                  var cx = Math.round(v.w * sc), cy = Math.round(v.h * sc);
+                  nextId += 1;
+                  return imageRunXml(rIdFor(hit[1], v), nextId, cx, cy, '');
+                })()
+              : textRunXml(v.text, rPrXml);
+            var frag = new dp().parseFromString(xml, 'application/xml').documentElement;
+            var newRun = doc.importNode(frag, true);
+            run.parentNode.insertBefore(newRun, run.nextSibling);
+            if (suffix) {
+              var sufRun = doc.importNode(new dp().parseFromString(textRunXml(suffix, rPrXml), 'application/xml').documentElement, true);
+              run.parentNode.insertBefore(sufRun, newRun.nextSibling);
+            }
+          } else {
+            ts[k].textContent = txt.slice(0, cutA) + txt.slice(cutB);
+          }
+        }
+        count += 1;
+      }
+    }
+
+    if (!/Extension="png"/i.test(ctXml)) {
+      ctXml = ctXml.replace('<Types', '<Types').replace(/(<Types[^>]*>)/, '$1<Default Extension="png" ContentType="image/png"/>');
+    }
+
+    function ser(d) {
+      var out = xs.serializeToString(d);
+      if (!/^<\?xml/.test(out)) out = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' + out;
+      return out;
+    }
+    zip.file('word/document.xml', ser(doc));
+    zip.file(relsPath, ser(rels));
+    zip.file('[Content_Types].xml', ctXml);
+    var bytes = await zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+    return { bytes: bytes, count: count };
+  }
+
+  return { scan: scan, fill: fill, isSign: isSign, isDate: isDate };
+})();
+
+</script>
 <script>
 (function () {
-  var stage = document.getElementById('stage');
-  var pad = document.getElementById('pad');
-  var cv = document.getElementById('cv');
-  var ctx = cv.getContext('2d');
-  var btnUndo = document.getElementById('undo');
-  var btnClear = document.getElementById('clear');
-  var btnOk = document.getElementById('ok');
-  var done = document.getElementById('done');
-  var out = document.getElementById('out');
-  var preview = document.getElementById('preview');
-  var chkT = document.getElementById('transparent');
-  var note = document.getElementById('note');
-  var btnBack = document.getElementById('back');
-  var btnSave = document.getElementById('save');
-  var safe = document.getElementById('safe');
+  var $ = function (id) { return document.getElementById(id); };
+  var stage = $('stage'), pad = $('pad'), cv = $('cv'), ctx = cv.getContext('2d');
+  var btnUndo = $('undo'), btnClear = $('clear'), btnOk = $('ok');
+  var done = $('done'), preview = $('preview'), chkT = $('transparent'), note = $('note');
+  var btnBack = $('back'), btnSave = $('save'), btnSaveDoc = $('saveDoc');
+  var docinfo = $('docinfo'), target = $('target'), hint = $('hint');
+  var safe = $('safe');
 
-  var INK = '#14213d';
-  var MIN_W = 1.4, MAX_W = 4.2;
+  var INK = '#14213d', MIN_W = 1.4, MAX_W = 4.2;
   var strokes = [], cur = null, activeId = null, lastT = 0;
-  var W = 0, H = 0, dpr = 1;
-  var rotated = false;
+  var W = 0, H = 0, dpr = 1, rotated = false;
+
+  /* Word 檔狀態 */
+  var docFile = null;      // {name, data:ArrayBuffer, marks:[...]}
+  var queue = [];          // 待簽的標記名
+  var signed = {};         // 標記名 -> {png, w, h, url}
+  var outDoc = null;       // 產生好的 docx (Uint8Array)
 
   /* ---------- 安全邊距：避開瀏海與底部橫條 ---------- */
   function applySafe() {
@@ -212,30 +400,20 @@ button:disabled { opacity: .45; cursor: default; transform: none; filter: none; 
     st.setProperty('--pl', Math.max(16, left + 6) + 'px');
   }
 
-  /* ---------- 舞台：永遠橫向 ---------- */
+  /* ---------- 舞台 ---------- */
   function layoutStage() {
     var vw = window.innerWidth, vh = window.innerHeight;
     rotated = vh > vw;
-    if (rotated) {
-      stage.style.width = vh + 'px';
-      stage.style.height = vw + 'px';
-      stage.style.transform = 'rotate(90deg) translateY(-100%)';
-    } else {
-      stage.style.width = vw + 'px';
-      stage.style.height = vh + 'px';
-      stage.style.transform = 'none';
-    }
+    stage.style.width = (rotated ? vh : vw) + 'px';
+    stage.style.height = (rotated ? vw : vh) + 'px';
+    stage.style.transform = rotated ? 'rotate(90deg) translateY(-100%)' : 'none';
     applySafe();
     resize();
   }
 
-  /* ---------- 時間戳 ---------- */
   function p2(n) { return (n < 10 ? '0' : '') + n; }
-  function tick() {
-    var d = new Date();
-    document.getElementById('stamp').textContent =
-      d.getFullYear() + '/' + p2(d.getMonth() + 1) + '/' + p2(d.getDate()) + ' ' + p2(d.getHours()) + ':' + p2(d.getMinutes());
-  }
+  function today() { var d = new Date(); return d.getFullYear() + '/' + p2(d.getMonth() + 1) + '/' + p2(d.getDate()); }
+  function tick() { var d = new Date(); $('stamp').textContent = today() + ' ' + p2(d.getHours()) + ':' + p2(d.getMinutes()); }
   tick(); setInterval(tick, 20000);
 
   /* ---------- 畫筆 ---------- */
@@ -244,8 +422,7 @@ button:disabled { opacity: .45; cursor: default; transform: none; filter: none; 
   function seg(c, pts, i) {
     if (i < 1) return;
     var a = pts[i - 1], b = pts[i];
-    c.beginPath();
-    c.lineWidth = (a.w + b.w) / 2;
+    c.beginPath(); c.lineWidth = (a.w + b.w) / 2;
     if (i === 1) { var m = mid(a, b); c.moveTo(a.x, a.y); c.lineTo(m.x, m.y); }
     else { var m0 = mid(pts[i - 2], a), m1 = mid(a, b); c.moveTo(m0.x, m0.y); c.quadraticCurveTo(a.x, a.y, m1.x, m1.y); }
     c.stroke();
@@ -258,19 +435,14 @@ button:disabled { opacity: .45; cursor: default; transform: none; filter: none; 
   }
   function drawStroke(c, pts) { for (var i = 1; i < pts.length; i++) seg(c, pts, i); tail(c, pts); }
   function redraw() {
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, W, H);
-    setup(ctx);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H); setup(ctx);
     for (var i = 0; i < strokes.length; i++) drawStroke(ctx, strokes[i]);
   }
-
-  /* ---------- 尺寸：用未旋轉的版面尺寸 ---------- */
   function resize() {
     var nw = pad.clientWidth, nh = pad.clientHeight;
     if (!nw || !nh) return;
     if (W && H && (nw !== W || nh !== H) && strokes.length) {
-      var s = Math.min(nw / W, nh / H);
-      var ox = (nw - W * s) / 2, oy = (nh - H * s) / 2;
+      var s = Math.min(nw / W, nh / H), ox = (nw - W * s) / 2, oy = (nh - H * s) / 2;
       strokes.forEach(function (pts) { pts.forEach(function (p) { p.x = p.x * s + ox; p.y = p.y * s + oy; p.w *= s; }); });
     }
     W = nw; H = nh;
@@ -280,7 +452,6 @@ button:disabled { opacity: .45; cursor: default; transform: none; filter: none; 
   }
   window.addEventListener('resize', layoutStage);
   window.addEventListener('orientationchange', function () { setTimeout(layoutStage, 250); });
-  layoutStage();
 
   function refresh() {
     var has = strokes.length > 0;
@@ -288,7 +459,7 @@ button:disabled { opacity: .45; cursor: default; transform: none; filter: none; 
     btnUndo.disabled = !has; btnClear.disabled = !has; btnOk.disabled = !has;
   }
 
-  /* ---------- 輸入：把螢幕座標換回畫布座標 ---------- */
+  /* ---------- 輸入 ---------- */
   function pos(e) {
     var r = cv.getBoundingClientRect();
     if (rotated) return { x: e.clientY - r.top, y: r.right - e.clientX };
@@ -298,39 +469,30 @@ button:disabled { opacity: .45; cursor: default; transform: none; filter: none; 
     var p = pos(e), last = cur[cur.length - 1];
     var dx = p.x - last.x, dy = p.y - last.y, dist = Math.sqrt(dx * dx + dy * dy);
     if (dist < 0.6) return;
-    var t = e.timeStamp || Date.now(), dt = Math.max(t - lastT, 1);
-    lastT = t;
+    var t = e.timeStamp || Date.now(), dt = Math.max(t - lastT, 1); lastT = t;
     var v = dist / dt, target;
     if (e.pointerType === 'pen' && e.pressure > 0) target = MIN_W + (MAX_W - MIN_W) * Math.min(e.pressure * 1.4, 1);
     else target = Math.max(MIN_W, Math.min(MAX_W, MAX_W - v * 1.5));
     p.w = last.w * 0.7 + target * 0.3;
-    cur.push(p);
-    seg(ctx, cur, cur.length - 1);
+    cur.push(p); seg(ctx, cur, cur.length - 1);
   }
   cv.addEventListener('pointerdown', function (e) {
     if (activeId !== null) return;
     if (e.pointerType === 'mouse' && e.button !== 0) return;
-    e.preventDefault();
-    activeId = e.pointerId;
+    e.preventDefault(); activeId = e.pointerId;
     try { cv.setPointerCapture(e.pointerId); } catch (err) {}
-    var p = pos(e); p.w = 2.6;
-    cur = [p]; lastT = e.timeStamp || Date.now();
-    setup(ctx);
-    pad.classList.add('signed');
+    var p = pos(e); p.w = 2.6; cur = [p]; lastT = e.timeStamp || Date.now();
+    setup(ctx); pad.classList.add('signed');
   });
   cv.addEventListener('pointermove', function (e) {
     if (e.pointerId !== activeId || !cur) return;
     e.preventDefault();
     var list = e.getCoalescedEvents ? e.getCoalescedEvents() : null;
-    if (list && list.length) { for (var i = 0; i < list.length; i++) addPoint(list[i]); }
-    else addPoint(e);
+    if (list && list.length) { for (var i = 0; i < list.length; i++) addPoint(list[i]); } else addPoint(e);
   });
   function end(e) {
     if (e.pointerId !== activeId || !cur) return;
-    tail(ctx, cur);
-    strokes.push(cur);
-    cur = null; activeId = null;
-    refresh();
+    tail(ctx, cur); strokes.push(cur); cur = null; activeId = null; refresh();
   }
   cv.addEventListener('pointerup', end);
   cv.addEventListener('pointercancel', end);
@@ -342,13 +504,13 @@ button:disabled { opacity: .45; cursor: default; transform: none; filter: none; 
   btnUndo.addEventListener('click', function () { strokes.pop(); redraw(); refresh(); });
   btnClear.addEventListener('click', function () { strokes = []; redraw(); refresh(); });
 
-  /* ---------- 輸出 ---------- */
-  function render(transparent) {
+  /* ---------- 簽名轉圖 ---------- */
+  function render(transparent, scale) {
     var x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     strokes.forEach(function (pts) { pts.forEach(function (p) {
       if (p.x < x0) x0 = p.x; if (p.y < y0) y0 = p.y; if (p.x > x1) x1 = p.x; if (p.y > y1) y1 = p.y;
     }); });
-    var padPx = 24, scale = 3;
+    var padPx = 12; scale = scale || 3;
     x0 = Math.max(0, x0 - padPx); y0 = Math.max(0, y0 - padPx);
     x1 = Math.min(W, x1 + padPx); y1 = Math.min(H, y1 + padPx);
     var c = document.createElement('canvas');
@@ -357,65 +519,203 @@ button:disabled { opacity: .45; cursor: default; transform: none; filter: none; 
     var g = c.getContext('2d');
     if (!transparent) { g.fillStyle = '#ffffff'; g.fillRect(0, 0, c.width, c.height); }
     g.setTransform(scale, 0, 0, scale, -x0 * scale, -y0 * scale);
-    setup(g);
-    strokes.forEach(function (pts) { drawStroke(g, pts); });
+    setup(g); strokes.forEach(function (pts) { drawStroke(g, pts); });
     return c;
   }
+  function canvasPng(c) {
+    return new Promise(function (res, rej) {
+      c.toBlob(function (b) {
+        if (!b) return rej(new Error('png'));
+        b.arrayBuffer().then(function (ab) { res(new Uint8Array(ab)); }, rej);
+      }, 'image/png');
+    });
+  }
 
-  function fileName() {
+  /* ---------- Word 檔 ---------- */
+  function setInfo(html, err) { docinfo.innerHTML = html; docinfo.classList.toggle('err', !!err); }
+  function escH(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function showTarget() {
+    if (docFile && queue.length) {
+      var total = docFile.marks.filter(function (m) { return m.kind === 'sign'; }).length;
+      var idx = total - queue.length + 1;
+      target.hidden = false;
+      target.textContent = '請簽：' + queue[0] + (total > 1 ? '（' + idx + '/' + total + '）' : '');
+      hint.textContent = '請在此簽名：' + queue[0];
+    } else {
+      target.hidden = true;
+      hint.textContent = '請在此簽名';
+    }
+  }
+
+  $('file').addEventListener('change', function (e) {
+    var f = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!f) return;
+    if (/\.doc$/i.test(f.name)) { setInfo('這是舊版 .doc，請在 Word 另存成 .docx 再開啟', true); return; }
+    if (typeof JSZip === 'undefined') { setInfo('Word 功能載入失敗，請重新整理頁面', true); return; }
+    setInfo('讀取中…');
+    f.arrayBuffer().then(function (buf) {
+      return JSZip.loadAsync(buf).then(function (zip) {
+        var x = zip.file('word/document.xml');
+        if (!x) throw new Error('notdocx');
+        return x.async('string');
+      }).then(function (xml) {
+        var marks = DocxFill.scan(xml, DOMParser);
+        var signs = marks.filter(function (m) { return m.kind === 'sign'; });
+        if (!signs.length) {
+          docFile = null; queue = []; signed = {};
+          setInfo('<b>' + escH(f.name) + '</b> 裡找不到 {{簽名}} 標記', true);
+        } else {
+          docFile = { name: f.name, data: buf, marks: marks };
+          queue = signs.map(function (m) { return m.name; });
+          signed = {};
+          var dates = marks.filter(function (m) { return m.kind === 'date'; }).length;
+          setInfo('<b>' + escH(f.name) + '</b>　簽名 ' + signs.length + ' 處' + (dates ? '・日期 ' + dates + ' 處自動填入' : ''));
+        }
+        strokes = []; redraw(); refresh(); showTarget();
+      });
+    }).catch(function () {
+      docFile = null; queue = [];
+      setInfo('無法讀取這個檔案，請確認是 .docx 格式', true);
+      showTarget();
+    });
+  });
+
+  /* ---------- 確認 ---------- */
+  function pngName() {
     var d = new Date();
     return '簽名_' + d.getFullYear() + p2(d.getMonth() + 1) + p2(d.getDate()) + '_' + p2(d.getHours()) + p2(d.getMinutes()) + '.png';
   }
-  // 事先把圖片轉成檔案，按「儲存圖片」時可以立刻叫出分享選單（iPhone 要求在按下當下呼叫）
+  // 事先把圖片轉成檔案，按「儲存」時可以立刻叫出分享選單（iPhone 要求在按下當下呼叫）
   function dataUrlToFile(url, name) {
     var parts = url.split(','), bin = atob(parts[1]), n = bin.length, arr = new Uint8Array(n);
     for (var i = 0; i < n; i++) arr[i] = bin.charCodeAt(i);
     return new File([arr], name, { type: 'image/png' });
   }
-
-  var outUrl = '', outFile = null;
-  function showOut() {
-    outUrl = render(chkT.checked).toDataURL('image/png');
-    out.src = outUrl;
-    outFile = dataUrlToFile(outUrl, fileName());
+  var outFile = null, outDocFile = null;
+  function showImageOnly() {
+    var url = render(chkT.checked).toDataURL('image/png');
+    outFile = dataUrlToFile(url, pngName());
+    preview.innerHTML = '';
+    var img = new Image(); img.alt = '您的簽名'; img.src = url;
+    preview.appendChild(img);
     preview.classList.toggle('clear-bg', chkT.checked);
   }
+
   btnOk.addEventListener('click', function () {
     if (!strokes.length) return;
-    showOut();
-    note.textContent = '按「儲存圖片」，或長按圖片存到照片。';
+    if (docFile && queue.length) {
+      var name = queue[0];
+      var c = render(true, 3);
+      btnOk.disabled = true;
+      canvasPng(c).then(function (png) {
+        signed[name] = { png: png, w: c.width, h: c.height, url: c.toDataURL('image/png') };
+        queue.shift();
+        strokes = []; redraw(); refresh();
+        if (queue.length) { showTarget(); return; }
+        buildDoc();
+      }).catch(function () { btnOk.disabled = false; setInfo('簽名圖片產生失敗，請再按一次確認', true); });
+      return;
+    }
+    showImageOnly();
+    $('doneTitle').textContent = '簽名完成';
+    $('optT').hidden = false; btnSaveDoc.hidden = true;
+    btnSave.hidden = false;
+    note.className = 'note'; note.textContent = '按「儲存圖片」，或長按圖片存到照片。';
     done.classList.add('show');
   });
-  chkT.addEventListener('change', showOut);
+
+  function buildDoc() {
+    var values = {};
+    docFile.marks.forEach(function (m) {
+      if (m.kind === 'sign' && signed[m.name]) values[m.name] = { type: 'image', png: signed[m.name].png, w: signed[m.name].w, h: signed[m.name].h };
+      if (m.kind === 'date') values[m.name] = { type: 'text', text: today() };
+    });
+    preview.innerHTML = '';
+    preview.classList.add('clear-bg');
+    Object.keys(signed).forEach(function (k) {
+      var img = new Image(); img.alt = k; img.src = signed[k].url; img.style.maxHeight = '45%';
+      preview.appendChild(img);
+    });
+    $('doneTitle').textContent = '正在放入 Word…';
+    $('optT').hidden = true; btnSave.hidden = true; btnSaveDoc.hidden = true;
+    note.className = 'note'; note.textContent = '';
+    done.classList.add('show');
+    DocxFill.fill(docFile.data, values, { JSZip: JSZip, DOMParser: DOMParser, XMLSerializer: XMLSerializer }, { maxW: 5, maxH: 1.4 })
+      .then(function (r) {
+        outDoc = r.bytes;
+        outDocFile = new File([r.bytes], signedName(), { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+        $('doneTitle').textContent = '已放入 Word（' + r.count + ' 處）';
+        btnSaveDoc.hidden = false;
+        note.textContent = '按「儲存 Word」，在分享選單選「儲存到檔案」或直接傳出：' + signedName();
+      })
+      .catch(function () {
+        $('doneTitle').textContent = '放入 Word 失敗';
+        note.className = 'note err';
+        note.textContent = '這份檔案無法處理。請在電腦用 Word 另存一次 .docx 後再試。';
+      });
+  }
+  function signedName() {
+    var base = docFile ? docFile.name.replace(/\.docx$/i, '') : '文件';
+    var d = new Date();
+    return base + '_已簽名_' + d.getFullYear() + p2(d.getMonth() + 1) + p2(d.getDate()) + '.docx';
+  }
+
+  chkT.addEventListener('change', showImageOnly);
   btnBack.addEventListener('click', function () {
     done.classList.remove('show');
     strokes = []; redraw(); refresh();
+    if (docFile) {
+      queue = docFile.marks.filter(function (m) { return m.kind === 'sign'; }).map(function (m) { return m.name; });
+      signed = {}; outDoc = null; outDocFile = null;
+    }
+    showTarget();
   });
 
-  /* ---------- 儲存：iPhone 用分享選單（選「儲存影像」），電腦直接下載 ---------- */
-  btnSave.addEventListener('click', function () {
-    if (!outFile) return;
-    if (navigator.canShare && navigator.canShare({ files: [outFile] })) {
-      navigator.share({ files: [outFile] }).then(function () {
-        note.textContent = '已完成。';
+  /* ---------- 儲存：Claude 內用下載、iPhone 用分享選單、電腦直接下載 ---------- */
+  var downloads = null;
+  if (window.claude && typeof window.claude.use === 'function') {
+    window.claude.use('downloads').then(function (d) { if (d) downloads = d; }).catch(function () {});
+  }
+  function setNote(text, err) { note.className = 'note' + (err ? ' err' : ''); note.textContent = text; }
+  function saveFile(file, btn) {
+    if (downloads) {
+      btn.disabled = true;
+      downloads.save({ filename: file.name, data: file }).then(function () {
+        setNote('已送出儲存：' + file.name);
       }).catch(function (err) {
-        if (err && err.name === 'AbortError') note.textContent = '已取消。';
-        else note.textContent = '無法開啟分享選單，請長按圖片儲存。';
+        var code = err && err.code;
+        if (code === 'declined') setNote('已取消儲存。');
+        else if (code === 'rate_limited') setNote('請稍等一下再按一次。', true);
+        else setNote('這裡無法直接儲存檔案。', true);
+      }).then(function () { btn.disabled = false; });
+      return;
+    }
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      navigator.share({ files: [file] }).then(function () {
+        setNote('已完成。');
+      }).catch(function (err) {
+        if (err && err.name === 'AbortError') setNote('已取消。');
+        else setNote('無法開啟分享選單。', true);
       });
       return;
     }
     var a = document.createElement('a');
-    a.href = outUrl; a.download = outFile.name;
-    document.body.appendChild(a); a.click(); a.remove();
-    note.textContent = '已下載：' + outFile.name;
-  });
-
-  refresh();
+    a.href = URL.createObjectURL(file); a.download = file.name;
+    document.body.appendChild(a); a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
+    setNote('已下載：' + file.name);
+  }
+  btnSave.addEventListener('click', function () { if (outFile) saveFile(outFile, btnSave); });
+  btnSaveDoc.addEventListener('click', function () { if (outDocFile) saveFile(outDocFile, btnSaveDoc); });
 
   /* ---------- 離線使用 ---------- */
   if ('serviceWorker' in navigator && location.protocol === 'https:') {
     navigator.serviceWorker.register('sw.js').catch(function () {});
   }
+
+  layoutStage();
+  refresh();
 })();
 </script>
 </body>
