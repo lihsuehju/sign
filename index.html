@@ -435,7 +435,7 @@ var DocxFill = (function () {
   var docview = $('docview'), docbody = $('docbody'), dvName = $('dvName'), dvCount = $('dvCount');
   var dvSave = $('dvSave'), dvNote = $('dvNote'), dvClose = $('dvClose');
 
-  var INK = '#14213d', MIN_W = 1.4, MAX_W = 4.2;
+  var INK = '#14213d', MIN_W = 3, MAX_W = 7.5;
   var strokes = [], cur = null, activeId = null, lastT = 0;
   var W = 0, H = 0, dpr = 1, rotated = false;
 
@@ -489,7 +489,7 @@ var DocxFill = (function () {
   }
   function tail(c, pts) {
     var n = pts.length;
-    if (n === 1) { c.beginPath(); c.arc(pts[0].x, pts[0].y, Math.max(pts[0].w, 2.4) / 2, 0, Math.PI * 2); c.fill(); return; }
+    if (n === 1) { c.beginPath(); c.arc(pts[0].x, pts[0].y, Math.max(pts[0].w, 4.5) / 2, 0, Math.PI * 2); c.fill(); return; }
     var a = pts[n - 2], b = pts[n - 1], m = mid(a, b);
     c.beginPath(); c.lineWidth = b.w; c.moveTo(m.x, m.y); c.lineTo(b.x, b.y); c.stroke();
   }
@@ -533,7 +533,7 @@ var DocxFill = (function () {
     var t = e.timeStamp || Date.now(), dt = Math.max(t - lastT, 1); lastT = t;
     var v = dist / dt, tw;
     if (e.pointerType === 'pen' && e.pressure > 0) tw = MIN_W + (MAX_W - MIN_W) * Math.min(e.pressure * 1.4, 1);
-    else tw = Math.max(MIN_W, Math.min(MAX_W, MAX_W - v * 1.5));
+    else tw = Math.max(MIN_W, Math.min(MAX_W, MAX_W - v * 2));
     p.w = last.w * 0.7 + tw * 0.3;
     cur.push(p); seg(ctx, cur, cur.length - 1);
   }
@@ -542,7 +542,7 @@ var DocxFill = (function () {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     e.preventDefault(); activeId = e.pointerId;
     try { cv.setPointerCapture(e.pointerId); } catch (err) {}
-    var p = pos(e); p.w = 2.6; cur = [p]; lastT = e.timeStamp || Date.now();
+    var p = pos(e); p.w = 5; cur = [p]; lastT = e.timeStamp || Date.now();
     setup(ctx); pad.classList.add('signed');
   });
   cv.addEventListener('pointermove', function (e) {
