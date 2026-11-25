@@ -181,14 +181,14 @@ button:disabled { opacity: .45; cursor: default; transform: none; filter: none; 
 /* 文件裡的簽名框（單位跟著文件走，會一起縮放） */
 .sigspot {
   display: inline-flex; align-items: center; justify-content: center;
-  min-width: 5cm; min-height: 1.4cm; padding: 2pt 6pt; margin: 0;
+  min-width: 6.25cm; min-height: 1.75cm; padding: 2pt 6pt; margin: 0;
   font: 600 11pt/1.2 var(--font-body); color: #1f5fbf;
   background: rgba(31, 95, 191, .10); border: 2px dashed #1f5fbf; border-radius: 4pt;
   vertical-align: middle; cursor: pointer;
   animation: blink 1.6s ease-in-out infinite;
 }
 .sigspot.is-signed { background: transparent; border-color: rgba(31, 95, 191, .35); animation: none; padding: 0 4pt; }
-.sigspot img { display: block; max-width: 5cm; max-height: 1.4cm; }
+.sigspot img { display: block; max-width: 6.25cm; max-height: 1.75cm; }
 @keyframes blink { 50% { background: rgba(31, 95, 191, .22); } }
 
 [hidden] { display: none !important; }
@@ -747,7 +747,7 @@ var DocxFill = (function () {
       if (m.kind === 'date') values[m.name] = { type: 'text', text: today() };
     });
     setDvNote('正在產生簽好的 Word…');
-    DocxFill.fill(file.data, values, DEPS(), { maxW: 5, maxH: 1.4 }).then(function (r) {
+    DocxFill.fill(file.data, values, DEPS(), { maxW: 6.25, maxH: 1.75 }).then(function (r) {
       if (seq !== buildSeq) return;
       outDocFile = new File([r.bytes], signedName(), { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
       dvSave.disabled = false;
